@@ -17,10 +17,11 @@ class Node:
         self.message_queues = {}
         self.nodes = nodes
         self.leader = None
+        self.timeout = True
         self.role = "Follower"
         self.address = address
         self.lock = threading.Lock()
-        self.election_timeout = random.uniform(3, 5)
+        self.election_timeout = random.uniform(2, 5)
 
         self.app.add_url_rule("/status", "status", self.status, methods=["GET"])
         self.app.add_url_rule("/topic", "create_topic", self.create_topic, methods=["PUT"])
@@ -38,6 +39,14 @@ class Node:
     @property
     def last_log_term(self):
         return self.log_entries[-1]["term"] if self.log_entries else 0
+    
+    @property
+    def prev_log_index(self):
+        return self.last_log_index - 1
+    
+    @property
+    def prev_log_term(self):
+        return self.log_entries[self.prev_log_index]["term"] if self.prev_log_index >= 0 else 0
 
     def status(self):
         return jsonify({"term": self.current_term, "role": self.role}), 200
@@ -85,9 +94,7 @@ class Node:
         }
 
         self.log_entries.append(entry)
-
-        prev_log_index = len(self.log_entries) - 2
-        prev_log_term = self.log_entries[-2]["term"] if len(self.log_entries) > 1 else 0
+        self.commit_index = self.last_log_index
         
         success_count = 1
         for node in self.nodes:
@@ -98,8 +105,8 @@ class Node:
                     json={
                         "term": self.current_term,
                         "leader_id": self.address,
-                        "prev_log_index": prev_log_index,
-                        "prev_log_term": prev_log_term,
+                        "prev_log_index": self.prev_log_index,
+                        "prev_log_term": self.prev_log_term,
                         "entries": [entry],
                         "leader_commit": self.commit_index
                     }
@@ -132,8 +139,11 @@ class Node:
         if self.role != "Leader":
             return jsonify({"success": False}), 408
 
-        if topic not in self.message_queues or not self.message_queues[topic]:
+        if topic not in self.message_queues:
             return jsonify({"success": False}), 409
+        
+        if not self.message_queues[topic]:
+            return jsonify({"success": False}), 410
 
         message = self.message_queues[topic].pop(0)
         return jsonify({"success": True, "message": message}), 200
@@ -150,6 +160,7 @@ class Node:
             if term > self.current_term:
                 self.current_term = term
                 self.role = "Follower"
+                self.timeout = False
 
             # Reject vote if candidate's term is behind
             if term < self.current_term:
@@ -177,10 +188,12 @@ class Node:
         entries = data.get("entries", [])
         leader_commit = data.get("leader_commit", -1)
 
-        if term > self.current_term:
+        if term >= self.current_term:
             self.current_term = term
             self.role = "Follower"
+            self.timeout = False
         
+        # Reject if term is behind
         if term < self.current_term:
             return jsonify({"term": self.current_term, "success": False}), 410
         
@@ -191,12 +204,10 @@ class Node:
             self.log_entries = self.log_entries[:prev_log_index + 1]
 
         with self.lock:
-            for entry in entries:
-                if entry not in self.log_entries:
-                    self.log_entries.append(entry)
+            self.log_entries.extend(entries)
         
         if leader_commit > self.commit_index:
-            self.commit_index = min(leader_commit, len(self.log_entries) - 1)
+            self.commit_index = min(leader_commit, self.last_log_index)
 
         return jsonify({"term": self.current_term, "success": True}), 200
 
@@ -262,6 +273,8 @@ class Node:
         self.role = "Leader"
         self.leader = self.address
 
+        self.commit_log_entries()
+
         # for node in self.nodes:
         #     try:
         #         response = requests.post(
@@ -295,8 +308,9 @@ class Node:
 
     def start_election_timer(self):
         while True:
+            self.timeout = True
             time.sleep(self.election_timeout)
-            if self.leader is None and self.role != "Leader":
+            if self.timeout and self.role != "Leader":
                 self.start_election()
 
     def run(self, host, port):

@@ -1,14 +1,11 @@
-from test_utils import Swarm, Node, LEADER, FOLLOWER, CANDIDATE
+from test_utils import Swarm, Node, LEADER, FOLLOWER, CANDIDATE, ELECTION_TIMEOUT, PROGRAM_FILE_PATH
 import pytest
 import time
 import requests
 
 NUM_NODES_ARRAY = [5]
-PROGRAM_FILE_PATH = "src/node.py"
 TEST_TOPIC = "test_topic"
 TEST_MESSAGE = "Test Message"
-
-ELECTION_TIMEOUT = 5.0
 NUMBER_OF_LOOP_FOR_SEARCHING_LEADER = 3
 
 

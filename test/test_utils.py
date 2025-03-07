@@ -20,7 +20,7 @@ REQUEST_TIMEOUT = 1
 
 # seconds the program will wait after starting a node for election to happen
 # it is set conservatively, you will likely be able to lower it for faster tessting
-ELECTION_TIMEOUT = 7
+ELECTION_TIMEOUT = 10
 
 
 PROGRAM_FILE_PATH = "src/node.py"
@@ -164,7 +164,7 @@ class Swarm:
             except requests.exceptions.ConnectionError:
                 continue
 
-        time.sleep(0.5)
+        time.sleep(5)
         return None
 
     def get_leader_loop(self, times: int):

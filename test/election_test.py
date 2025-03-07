@@ -79,6 +79,6 @@ def test_is_newleader_elected(swarm: Swarm, num_nodes: int):
     leader1 = swarm.get_leader_loop(3)
     assert (leader1 != None)
     leader1.clean(ELECTION_TIMEOUT)
-    leader2 = swarm.get_leader_loop(3)
+    leader2 = swarm.get_leader_loop(10)
     assert (leader2 != None)
     assert (leader2 != leader1)

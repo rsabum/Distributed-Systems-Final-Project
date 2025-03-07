@@ -98,10 +98,17 @@ def test_put_message(node_with_test_topic):
 
 
 def test_put_and_get_message(node_with_test_topic):
-    assert(node_with_test_topic.put_message(
-        TEST_TOPIC, TEST_MESSAGE).json() == {"success": True})
-    assert(node_with_test_topic.get_message(
-        TEST_TOPIC).json() == {"success": True, "message": TEST_MESSAGE})
+    # assert(node_with_test_topic.put_message(
+    #     TEST_TOPIC, TEST_MESSAGE).json() == {"success": True})
+    # assert(node_with_test_topic.get_message(
+    #     TEST_TOPIC).json() == {"success": True, "message": TEST_MESSAGE})
+    response1 = node_with_test_topic.put_message(TEST_TOPIC, TEST_MESSAGE).json()
+    print(response1)
+    assert(response1 == {"success": True})
+    
+    response2 = node_with_test_topic.get_message(TEST_TOPIC).json()
+    print(response2)
+    assert(response2 == {"success": True, "message": TEST_MESSAGE})
 
 
 def test_put2_and_get1_message(node_with_test_topic):
