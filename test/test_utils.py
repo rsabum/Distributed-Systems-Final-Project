@@ -5,30 +5,51 @@ import time
 import requests
 import socket
 
+class Constants:
 
-MESSAGE = "/message"
-TOPIC = "/topic"
-STATUS = "/status"
+    # Chose 13 to reduce probability 
+    # of ties in the election process
+    CLUSTER_SIZES = [13]
 
-FOLLOWER = "Follower"
-LEADER = "Leader"
-CANDIDATE = "Candidate"
+    # One second more than the maximum 
+    # timeout of any node
+    ELECTION_TIMEOUT = 3
 
-CONFIG_PATH = "config.json"
-IP = "127.0.0.1"
-REQUEST_TIMEOUT = 1
+    # Endpoints for the client
+    MESSAGE = "/message"
+    TOPIC = "/topic"
+    STATUS = "/status"
 
-# seconds the program will wait after starting a node for election to happen
-# it is set conservatively, you will likely be able to lower it for faster tessting
-ELECTION_TIMEOUT = 3
+    # Roles
+    FOLLOWER = "Follower"
+    LEADER = "Leader"
+    CANDIDATE = "Candidate"
 
-PROGRAM_FILE_PATH = "src/node.py"
+    # Sample topic and message
+    TEST_TOPIC = "test_topic"
+    TEST_MESSAGE = "test_message"
+
+    # Paths
+    PROGRAM_FILE_PATH = "src/node.py"
+    CONFIG_PATH = "config.json"
+    IP = "127.0.0.1"
+
+    # Originally 1 but had to increase because 
+    # requests would often timeout before a node 
+    # had a chance to respond
+    REQUEST_TIMEOUT = 5
+
+    # Search for leader a few times in case
+    # the leader has not been elected yet
+    LEADER_LOOPS = 3
+
+
 
 
 class Node:
-    def __init__(self,  program_file_path: str, config_path: str, i: int, config: dict, ):
+    def __init__(self,  program_file_path: str, config_path: str, index: int, config: dict, ):
         self.config = config
-        self.i = i
+        self.index = index
         self.address = self.get_address()
         self.program_file_path = program_file_path
         self.config_path = config_path
@@ -38,7 +59,7 @@ class Node:
             "python3",
             self.program_file_path,
             self.config_path,
-            str(self.i)
+            str(self.index)
         ]
         self.process = Popen(self.startup_sequence)
         self.wait_for_flask_startup()
@@ -83,25 +104,25 @@ class Node:
         raise Exception('Cannot connect to server')
 
     def get_address(self):
-        address = self.config["addresses"][self.i]
+        address = self.config["addresses"][self.index]
         return "http://" + address["ip"]+":"+str(address["port"])
 
     def put_message(self, topic: str, message: str):
         data = {"topic": topic, "message": message}
-        return requests.put(self.address + MESSAGE, json=data,  timeout=REQUEST_TIMEOUT)
+        return requests.put(self.address + Constants.MESSAGE, json=data,  timeout=Constants.REQUEST_TIMEOUT)
 
     def get_message(self, topic: str):
-        return requests.get(self.address + MESSAGE + '/' + topic,  timeout=REQUEST_TIMEOUT)
+        return requests.get(self.address + Constants.MESSAGE + '/' + topic,  timeout=Constants.REQUEST_TIMEOUT)
 
     def create_topic(self, topic: str):
         data = {"topic": topic}
-        return requests.put(self.address + TOPIC, json=data, timeout=REQUEST_TIMEOUT)
+        return requests.put(self.address + Constants.TOPIC, json=data, timeout=Constants.REQUEST_TIMEOUT)
 
     def get_topics(self):
-        return requests.get(self.address + TOPIC, timeout=REQUEST_TIMEOUT)
+        return requests.get(self.address + Constants.TOPIC, timeout=Constants.REQUEST_TIMEOUT)
 
     def get_status(self):
-        return requests.get(self.address + STATUS, timeout=REQUEST_TIMEOUT)
+        return requests.get(self.address + Constants.STATUS, timeout=Constants.REQUEST_TIMEOUT)
 
 
 class Swarm:
@@ -110,12 +131,17 @@ class Swarm:
 
         # create the config
         config = self.make_config()
-        dump(config, open(CONFIG_PATH, 'w'))
+        dump(config, open(Constants.CONFIG_PATH, 'w'))
 
-        self.nodes = [
-            Node(program_file_path, CONFIG_PATH, i, config)
-            for i in range(self.num_nodes)
-        ]
+        self.nodes = []
+        for index in range(num_nodes):
+            self.nodes.append(Node(
+                program_file_path, 
+                Constants.CONFIG_PATH, 
+                index, 
+                config
+            ))
+        
 
     def start(self, sleep=0):
         for node in self.nodes:
@@ -138,15 +164,24 @@ class Swarm:
         time.sleep(sleep)
 
     def make_config(self):
-        return {"addresses": [{"ip": IP, "port": get_free_port(), "internal_port": get_free_port()} for _ in range(self.num_nodes)]}
+        config = {"addresses": []}
 
+        for i in range(self.num_nodes):
+            config["addresses"].append({
+                "ip": Constants.IP, 
+                "port": get_free_port(), 
+                "internal_port": get_free_port()
+            })
+
+        return config
+    
     def get_status(self):
         statuses = {}
         for node in self.nodes:
             try:
                 response = node.get_status()
                 if (response.ok):
-                    statuses[node.i] = response.json()
+                    statuses[node.index] = response.json()
             
             except requests.exceptions.ConnectionError:
                 continue
@@ -157,7 +192,7 @@ class Swarm:
         for node in self.nodes:
             try:
                 response = node.get_status()
-                if (response.ok and response.json()["role"] == LEADER):
+                if (response.ok and response.json()["role"] == Constants.LEADER):
                     return node
                 
             except requests.exceptions.ConnectionError:
